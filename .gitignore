@@ -2,3 +2,6 @@ display-leap-data-opencv
 display-leap-data-sdl
 *.o
 stereo_view
+.cproject
+.project
+.settings/
