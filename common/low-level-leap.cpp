@@ -29,7 +29,7 @@ static void
 leap_init(_ctx_t *ctx)
 {
   int ret;
-
+  unsigned char temp_char[2] = { 0x00, 0x00 };
 #include "leap_libusb_init.c.inc"
 }
 

@@ -45,12 +45,13 @@ do
 
       function ctrl_out_tap.packet(pinfo,tvb)
 
-         local code_string = "  if ((ret = libusb_control_transfer(ctx->dev_handle, "
+         local code_string = "  temp_char[0] = 0x" .. table.concat(split(tostring( usb_capdata()), ":") , "; temp_char[1] = 0x") .. ";\n"
+	 code_string = code_string .. "  if ((ret = libusb_control_transfer(ctx->dev_handle, "
          code_string = code_string .. tostring( usb_bmRequestType() ) .. ", "
          code_string = code_string .. tostring( usb_setup_bRequest() ) .. ", "
          code_string = code_string .. tostring( usb_setup_wValue() ) .. ", "
          code_string = code_string .. tostring( usb_setup_wIndex() ) .. ", "
-         code_string = code_string .. to_c_byte_array( usb_capdata() ) .. ", "
+         code_string = code_string .. "temp_char, "
          code_string = code_string .. #usb_capdata() .. ", "
          code_string = code_string .. "1000)) != " .. #usb_capdata() .. ") { printf(\"strl out: ret == %i\\n\", ret); }"
 
