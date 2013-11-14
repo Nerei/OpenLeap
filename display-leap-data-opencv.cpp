@@ -68,16 +68,21 @@ void process_usb_frame(ctx_t *ctx, unsigned char *data, int size)
 	  f->frame = cvCreateImage( cvSize(VFRAME_WIDTH, 2 * VFRAME_HEIGHT), IPL_DEPTH_8U, 3);
 	  frame[dwPresentationTime] = f;
 	  pending.push_back(dwPresentationTime);
-	  sort(pending.begin(),pending.end());
+	  sort(pending.begin(),pending.end());	  
+      f->id = dwPresentationTime;
   }
   
   //printf("frame time: %u\n", dwPresentationTime);
 
-  if (f->id == 0)
-    f->id = dwPresentationTime;
   for (i = bHeaderLen; i < size ; i += 2) {
     if (f->data_len >= VFRAME_SIZE)
+    {
+      cvReleaseImage(&f->frame);
+      frame.erase(f->id);
+      pending.erase(remove(pending.begin(), pending.end(), f->id), pending.end());
+      free(f);
       break ;
+    }
 
     CvScalar s;
     s.val[2] = data[i];
@@ -90,22 +95,26 @@ void process_usb_frame(ctx_t *ctx, unsigned char *data, int size)
     f->data_len++;
   }
 
-  /*if (dwPresentationTime != f->id && f->id > 0) {
+  if (dwPresentationTime != f->id && f->id > 0) {
     printf("mixed frame TS: (id=%i, dwPresentationTime=%i) -- dropping frame\n", f->id, dwPresentationTime);
-    f->data_len = 0;
-    f->id = 0;
+    cvReleaseImage(&f->frame);
+    frame.erase(f->id);
+    pending.erase(remove(pending.begin(), pending.end(), f->id), pending.end());
+    free(f);
     return ;
-  }*/
+  }
   if (bmHeaderInfo & UVC_STREAM_EOF) {
     //printf("End-of-Frame.  Got %i\n", f->data_len);
     if (f->data_len != VFRAME_SIZE) {
       printf("wrong frame size got %i expected %i\n", f->data_len, VFRAME_SIZE);
-      f->data_len = 0;
-      f->id = 0;
+      cvReleaseImage(&f->frame);
+      frame.erase(f->id);
+      pending.erase(remove(pending.begin(), pending.end(), f->id), pending.end());
+      free(f);
       return ;
     }
 
-    if (current) {
+    if (current!=NULL) {
     	cvReleaseImage(&current->frame);
     	free(current);
     }
@@ -114,18 +123,16 @@ void process_usb_frame(ctx_t *ctx, unsigned char *data, int size)
     frame.erase(dwPresentationTime);
     sort(pending.begin(),pending.end());
     if (pending.size() > 10) {
-        printf("Dropping 5 of the 10 oldest incomplete frames\n");
-        for(vector<uint32_t>::const_iterator it = pending.begin(); it!=pending.begin()+5;it++)
+        printf("Oh noez! There are %d pending frames in the queue!\n",(int)pending.size());
+/*        for(vector<uint32_t>::const_iterator it = pending.begin(); it!=pending.begin()+5;it++)
         {
             cvReleaseImage(&frame[*it]->frame);
             free(frame[*it]);
             frame.erase(*it);
         }
-        pending.erase(pending.begin(), pending.begin()+5);
+        pending.erase(pending.begin(), pending.begin()+5);*/
     }
 
-    f->data_len = 0;
-    f->id = 0;
     process_video_frame(ctx);
   }
 }
