@@ -28,7 +28,12 @@ OBJS =  $(subst .cpp,.o,$(COMMON)) \
 
 DIRT = $(wildcard */*.o */*.so */*.d *.i *~ */*~ *.log)
 
-CXXOPTS = -fmessage-length=0 -Wall -O3
+CXXOPTS = -fmessage-length=0 -Wall
+ifdef DEBUG	
+	CXXOPTS += -DDEBUG -O0 -g
+else
+	CXXOPTS += -O3
+endif
 
 CXXINCS = "-I$(CURDIR)/include" \
           $(shell pkg-config --cflags opencv) \
@@ -52,6 +57,9 @@ TIMETOCAP=5
 .PHONY: Makefile
 
 default all: common/leap_libusb_init.c.inc
+ifdef DEBUG
+	@echo "Building with debugging"
+endif
 	$(MAKE) $(TARGETS)
 	
 common/leap_init.pcap:
