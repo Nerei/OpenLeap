@@ -1,8 +1,6 @@
 #include "low-level-leap.h"
 #include <stdarg.h>
 
-#define uc unsigned\ char
-
 typedef struct _ctx_s _ctx_t;
 struct _ctx_s
 {
