@@ -1,4 +1,7 @@
 #include "low-level-leap.h"
+#include <stdarg.h>
+
+#define uc unsigned\ char
 
 typedef struct _ctx_s _ctx_t;
 struct _ctx_s
@@ -25,12 +28,29 @@ fprintf_data(FILE *fp, const char * title, unsigned char *_data, size_t size)
   debug_printf("\n");
 }
 
+    std::map<int, unsigned char *> gcc48canDIAF;
+
+unsigned char *setValAndGetAddr(int l, ...) {
+    if (gcc48canDIAF.find(l) == gcc48canDIAF.end())
+        gcc48canDIAF[l] = (unsigned char *)malloc(l);
+    va_list ap;
+    va_start(ap, l);
+    for(int i=0;i<l;i++) {
+        gcc48canDIAF[l][i] = (unsigned char)va_arg(ap, int);
+    }
+    va_end(ap);
+    return gcc48canDIAF[l];
+} 
+
 static void
 leap_init(_ctx_t *ctx)
 {
-  int ret;
-  unsigned char temp_char[2] = { 0x00, 0x00 };
+  int ret; 
 #include "leap_libusb_init.c.inc"
+  for(std::map<int, unsigned char*>::iterator it = gcc48canDIAF.begin(); it != gcc48canDIAF.end(); ++it) {
+    free(it->second);
+  }
+  gcc48canDIAF.clear();
 }
 
 void setDataCallback(boost::function<void(unsigned char*,int)> dc)
