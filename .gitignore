@@ -5,3 +5,5 @@ stereo_view
 .cproject
 .project
 .settings/
+leap_lib.d
+leap_lib.so
