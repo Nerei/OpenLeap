@@ -11,6 +11,7 @@ boost::function<void(unsigned char*, int)> dataCallback;
 unsigned char data[16384];
 _ctx_t _ctx_data;
 _ctx_t *_ctx;
+bool timetodie = false;
 
 static void
 fprintf_data(FILE *fp, const char * title, unsigned char *_data, size_t size)
@@ -56,10 +57,15 @@ void setDataCallback(boost::function<void(unsigned char*,int)> dc)
   dataCallback = dc;
 }
 
+void shutdown()
+{
+  timetodie = true;
+}
+
 void spin()
 {
   int transferred,ret;
-  for ( ; ; ) {
+  while(!timetodie) {
     ret = libusb_bulk_transfer(_ctx->dev_handle, 0x83, data, sizeof(data), &transferred, 1000);
     if (ret != 0) {
       printf("libusb_bulk_transfer(): %i: %s\n", ret, libusb_error_name(ret));
@@ -69,7 +75,7 @@ void spin()
 
     //printf("%i ", transferred);
 
-    //if (transferred == 16380)
+    if (dataCallback != NULL)
       dataCallback(data, transferred);
   }
   libusb_exit(_ctx->libusb_ctx);

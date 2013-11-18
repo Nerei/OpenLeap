@@ -41,4 +41,5 @@
 void setDataCallback(boost::function<void(unsigned char*, int)>);
 void init();
 void spin();
+void shutdown();
 #endif
