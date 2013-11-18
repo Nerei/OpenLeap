@@ -29,7 +29,7 @@ OBJS =  $(subst .cpp,.o,$(COMMON)) \
 DIRT = $(wildcard */*.o */*.so */*.d *.i *~ */*~ *.log *.o *.so *.d)
 
 ALLTARGETS = $(TARGETS) \
-	leap_lib.so
+	libopenleap.so
 
 CXXOPTS = -fmessage-length=0 -Wall
 ifdef DEBUG	
