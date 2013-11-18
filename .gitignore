@@ -7,3 +7,5 @@ stereo_view
 .settings/
 leap_lib.d
 leap_lib.so
+libopenleap.d
+libopenleap.so
