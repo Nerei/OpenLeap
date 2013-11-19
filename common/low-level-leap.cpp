@@ -1,23 +1,43 @@
 #include "low-level-leap.h"
 #include <stdarg.h>
+#include <map>
+#include <queue>
+#include <stack>
+
+using namespace std;
 
 typedef struct _ctx_s _ctx_t;
 struct _ctx_s
 {
   libusb_context       *libusb_ctx;
   libusb_device_handle *dev_handle;
+  int quit;
 };
-boost::function<void(unsigned char*, int)> dataCallback;
-unsigned char data[16384];
+typedef struct frame_s frame_t;
+struct frame_s
+{
+  camdata_t data;
+  uint32_t id;
+  uint32_t state;
+  uint32_t interleaved_pos;
+  uint32_t left_pos;
+  uint32_t right_pos;
+};
+
 _ctx_t _ctx_data;
 _ctx_t *_ctx;
-bool timetodie = false;
+
+frame_t *current = NULL;
+
+boost::function<void(camdata_t*)> dataCallback;
+
+unsigned char data[16384];
 
 static void
 fprintf_data(FILE *fp, const char * title, unsigned char *_data, size_t size)
 {
   int i;
-
+ 
   debug_printf("%s", title);
   for (i = 0; i < size; i++) {
     if ( ! (i % 16) )
@@ -27,8 +47,7 @@ fprintf_data(FILE *fp, const char * title, unsigned char *_data, size_t size)
   debug_printf("\n");
 }
 
-    std::map<int, unsigned char *> gcc48canDIAF;
-
+std::map<int, unsigned char *> gcc48canDIAF;
 unsigned char *setValAndGetAddr(int l, ...) {
     if (gcc48canDIAF.find(l) == gcc48canDIAF.end())
         gcc48canDIAF[l] = (unsigned char *)malloc(l);
@@ -39,7 +58,7 @@ unsigned char *setValAndGetAddr(int l, ...) {
     }
     va_end(ap);
     return gcc48canDIAF[l];
-} 
+}
 
 static void
 leap_init(_ctx_t *ctx)
@@ -52,33 +71,60 @@ leap_init(_ctx_t *ctx)
   gcc48canDIAF.clear();
 }
 
-void setDataCallback(boost::function<void(unsigned char*,int)> dc)
+void setDataCallback(boost::function<void(camdata_t*)> dc)
 {
   dataCallback = dc;
 }
 
 void shutdown()
 {
-  timetodie = true;
+  _ctx->quit = 1;
 }
 
 void spin()
 {
-  int transferred,ret;
-  while(!timetodie) {
-    ret = libusb_bulk_transfer(_ctx->dev_handle, 0x83, data, sizeof(data), &transferred, 1000);
+  int transferred,ret,i,j;
+  while(_ctx->quit == 0) {
+    ret = libusb_bulk_transfer(_ctx->dev_handle, 0x83, data, sizeof(data), &transferred, 100);
     if (ret != 0) {
       printf("libusb_bulk_transfer(): %i: %s\n", ret, libusb_error_name(ret));
       continue;
     }
-    //printf("libusb_bulk_transfer(): %i\n", ret);
 
-    //printf("%i ", transferred);
+    int bHeaderLen = data[0];
+    int bmHeaderInfo = data[1];
 
-    if (dataCallback != NULL)
-      dataCallback(data, transferred);
+    uint32_t dwPresentationTime = *( (uint32_t *) &data[2] );
+
+    if (current == NULL)
+    {
+       current = (frame_t *)malloc(sizeof(frame_t));
+       memset(current, 0, sizeof(frame_t));
+    }
+    if (current->id != dwPresentationTime) {
+        current->interleaved_pos = 0;
+        current->left_pos = 0;
+        current->right_pos = 0;
+        current->state = 0;
+        current->id = dwPresentationTime;
+    }
+    for (j=0,i=bHeaderLen; i < transferred && (current->left_pos < VFRAME_SIZE || current->right_pos < VFRAME_SIZE || current->interleaved_pos < VFRAME_INTERLEAVED_SIZE); i++,j=1-j) {
+      if (j == 0 && current->left_pos < VFRAME_SIZE) current->data.left[current->left_pos++] = data[i];
+      else if (j == 1 && current->right_pos < VFRAME_SIZE) current->data.right[current->right_pos++] = data[i];
+      if (current->interleaved_pos < VFRAME_INTERLEAVED_SIZE) current->data.interleaved[current->interleaved_pos++] = data[i];      
+    }
+
+    if (bmHeaderInfo & UVC_STREAM_EOF) {
+      if (current->interleaved_pos == VFRAME_INTERLEAVED_SIZE && dataCallback != NULL)
+          dataCallback(&current->data);
+      current->id = 0;
+    }
   }
   libusb_exit(_ctx->libusb_ctx);
+  if (current)
+  {
+    free(current);
+  }
 }
 
 void init()

@@ -35,10 +35,19 @@
 #define VFRAME_WIDTH  640
 #define VFRAME_HEIGHT 240
 #define VFRAME_SIZE   (VFRAME_WIDTH * VFRAME_HEIGHT)
+#define VFRAME_INTERLEAVED_SIZE (2*VFRAME_SIZE)
 
 #define UVC_STREAM_EOF                                  (1 << 1)
 
-void setDataCallback(boost::function<void(unsigned char*, int)>);
+typedef struct camdata_s camdata_t;
+struct camdata_s
+{
+  uint8_t left[VFRAME_SIZE];
+  uint8_t right[VFRAME_SIZE];
+  uint8_t interleaved[VFRAME_INTERLEAVED_SIZE];
+};
+
+void setDataCallback(boost::function<void(camdata_t*)>);
 void init();
 void spin();
 void shutdown();

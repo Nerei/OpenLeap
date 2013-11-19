@@ -14,23 +14,6 @@
 using namespace std;
 using namespace cv;
 
-#define NUM_BUFFERS 2
-
-typedef struct ctx_s ctx_t;
-struct ctx_s
-{
-    int quit;
-};
-
-typedef struct frame_s frame_t;
-struct frame_s
-{
-    IplImage* frame;
-    uint32_t id;
-    uint32_t data_len;
-    uint32_t state;
-};
-
 typedef struct stereoframe_s stereoframe_t; 
 struct stereoframe_s{
     IplImage * left;
@@ -41,12 +24,6 @@ struct stereoframe_s{
 
 };
 
-ctx_t ctx_data;
-ctx_t *ctx = NULL;
-map<uint32_t, frame_t*> framesMap;
-vector<uint32_t> pending;
-stack<frame_t *> recycling;
-frame_t *current = NULL;
 stereoframe_t stereo;
 
 const CvSize cvs = cvSize(VFRAME_WIDTH, VFRAME_HEIGHT);
@@ -111,7 +88,7 @@ static void computeStereoBM ( stereoframe_t *data ) {
     }
 }
 
-void process_video_frame(ctx_t *ctx) {
+void process_video_frame() {
     int key;
 
     // cvShowImage(DEPTH_WINDOW, frame);
@@ -134,7 +111,7 @@ void process_video_frame(ctx_t *ctx) {
         switch(key) {
 
             case 1048689: // q
-                ctx->quit = 1;
+                shutdown();
                 break;
 
             case 1048695: // w
@@ -195,122 +172,19 @@ void process_video_frame(ctx_t *ctx) {
     }
 }
 
-void process_usb_frame(ctx_t *ctx, unsigned char *data, int size) {
+void gotData(camdata_t *data) {
     int i, x, y;
 
-    int bHeaderLen = data[0];
-    int bmHeaderInfo = data[1];
-
-    uint32_t dwPresentationTime = *( (uint32_t *) &data[2] );
-
-    frame_t* currentFrame = NULL;
-
-    // Check if frame is already in the vector
-    for(vector<uint32_t>::const_iterator it = pending.begin(); it!=pending.end();it++) {
-        if ((uint32_t)(*it) == dwPresentationTime) {
-            currentFrame = framesMap[dwPresentationTime];
-            break;
-        }
+    for (x = 0, y = 0, i = 0; i < VFRAME_SIZE; x = i % VFRAME_WIDTH,y=(int) floor((1.0f * i) / (1.0f * VFRAME_WIDTH)),i++) {
+        setPixels(stereo.left, x, y, data->left[i]);
+        setPixels(stereo.right, x, y, data->right[i]);
     }
-
-    // If no frame was found, create one
-    if (currentFrame == NULL) {
-        // If there's one in the recycling bin, use it
-        if (!recycling.empty()) {
-            currentFrame = recycling.top();
-            recycling.pop();
-            currentFrame->data_len = 0;
-            currentFrame->state = 0;
-        } else { // Else create a new one
-            currentFrame = (frame_t *) malloc(sizeof(frame_t));
-            memset(currentFrame, 0, sizeof(frame_t));
-            currentFrame->frame = cvCreateImage(cvs, IPL_DEPTH_8U, 3);
-        }
-
-        // Push it to the vector of pending frames
-        framesMap[dwPresentationTime] = currentFrame;
-        pending.push_back(dwPresentationTime);
-        sort(pending.begin(),pending.end());
-        currentFrame->id = dwPresentationTime;
-    }
-
-    for (x = 0, y = 0, i = bHeaderLen; i < size; i += 2) {
-        if (currentFrame->data_len >= VFRAME_SIZE) {
-            break;
-        }
-
-        x = currentFrame->data_len % VFRAME_WIDTH;
-        y = (int) floor((1.0f * currentFrame->data_len) / (1.0f * VFRAME_WIDTH));
-        // y = currentFrame->data_len / VFRAME_WIDTH;
-        
-        // setTwoPixels(x, y, 0, data[i], data[i])
-        // setTwoPixels(currentFrame->frame, x+VFRAME_WIDTH, y, data[i+1], 0, 0)
-
-        // setTwoPixels(stereo.left, x, y, 0, data[i], data[i]);
-        setPixels(stereo.left, x, y, data[i]);
-        setPixels(stereo.right, x, y, data[i]);
-
-        currentFrame->data_len++;
-    }
-    // If stream frame is done
-    if (bmHeaderInfo & UVC_STREAM_EOF) {
-        //printf("End-of-Frame.  Got %i\n", currentFrame->data_len);
-
-        // If frame isn't complete, push it to the recycle bin
-        if (currentFrame->data_len != VFRAME_SIZE) {
-            // printf("wrong frame size got %i expected %i\n", currentFrame->data_len, VFRAME_SIZE);
-            recycling.push(currentFrame);
-            framesMap.erase(currentFrame->id);
-            pending.erase(remove(pending.begin(), pending.end(), currentFrame->id), pending.end());
-            return ;
-        }
-
-
-        if (current != NULL) {
-            recycling.push(current);
-        }
-
-        current = framesMap[dwPresentationTime];
-        // current->frame = stereo.left;
-        pending.erase(remove(pending.begin(), pending.end(), dwPresentationTime), pending.end());
-        framesMap.erase(dwPresentationTime);
-        sort(pending.begin(),pending.end());
-
-        if (pending.size() > 10) {
-            // printf("Oh noez! There are %d pending frames in the queue!\n",(int)pending.size());
-            
-            for(vector<uint32_t>::const_iterator it = pending.begin(); it!=pending.begin()+5; it++) {
-                recycling.push(framesMap[*it]);
-                framesMap.erase(*it);
-            }
-
-            reverse(pending.begin(), pending.end());
-            pending.resize(5);
-            reverse(pending.begin(), pending.end());
-        }
-
-        computeStereoBM(&stereo);
-
-        // IplImage * newDepth = cvCreateImage(cvs, IPL_DEPTH_8U, 3);
-        // cvCvtColor(stereo.cv_image_depth_aux, newDepth, CV_GRAY2RGB);
-
-        process_video_frame(ctx);
-        // process_video_frame(ctx, current->frame);
-    }
-}
-
-void gotData(unsigned char* data, int usb_frame_size)
-{
-    process_usb_frame(ctx, data, usb_frame_size);
+    computeStereoBM(&stereo);
+    process_video_frame();
 }
 
 int main(int argc, char *argv[])
-{
-    memset(&ctx_data, 0, sizeof (ctx_data));
-    ctx = &ctx_data;
-    // cvNamedWindow("mainWin", 0);
-    // cvResizeWindow("mainWin", VFRAME_WIDTH, 2 * VFRAME_HEIGHT);
-    
+{   
     namedWindow("Depth Image");
     namedWindow("Left Image");
     namedWindow("Right Image");
@@ -322,25 +196,6 @@ int main(int argc, char *argv[])
     setDataCallback(&gotData);
     
     spin();
-    
-    if (current) {
-        cvReleaseImage(&current->frame);
-        free(current);
-    }
-
-    for(std::vector<uint32_t>::const_iterator it = pending.begin(); it != pending.end(); it++) {
-        frame_t *tmp = framesMap[*it];
-        cvReleaseImage(&tmp->frame);
-        framesMap.erase((uint32_t)*it);
-        free(tmp);
-    }
-
-    while(!recycling.empty()) {
-        frame_t *tmp = recycling.top();
-        recycling.pop();
-        cvReleaseImage(&tmp->frame);
-        free(tmp);
-    }
 
     return (0);
 }
