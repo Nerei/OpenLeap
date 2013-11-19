@@ -44,10 +44,7 @@ struct frame_s
 
 ctx_t ctx_data;
 ctx_t *ctx = NULL;
-map<uint32_t, frame_t*> frame;
-vector<uint32_t> pending;
-stack<frame_t *> recycling;
-frame_t *current = NULL;
+frame_t *current = NULL, *next = NULL;
 
 const CvSize cvs = cvSize(VFRAME_WIDTH * 2, 2 * VFRAME_HEIGHT);
 
@@ -70,74 +67,44 @@ void process_usb_frame(ctx_t *ctx, unsigned char *data, int size)
 
   uint32_t dwPresentationTime = *( (uint32_t *) &data[2] );
 
-  frame_t* f = NULL;
-
-  for(vector<uint32_t>::const_iterator it = pending.begin(); it!=pending.end();it++)
-	  if ((uint32_t)(*it) == dwPresentationTime)
-	  {
-		  f = frame[dwPresentationTime];
-		  break;
-	  }
-  if (f == NULL)
+  if (current == NULL)
   {
-      if (!recycling.empty()) {
-	    f = recycling.top();
-	    recycling.pop();
-        f->data_len = 0;
-        f->state = 0;
-      } else {
-	    f = (frame_t *)malloc(sizeof(frame_t));
-	    memset(f, 0, sizeof(frame_t));
-        f->frame = cvCreateImage(cvs, IPL_DEPTH_8U, 3);
-      }
-      frame[dwPresentationTime] = f;
-      pending.push_back(dwPresentationTime);
-      sort(pending.begin(),pending.end());
-      f->id = dwPresentationTime;
+	    current = (frame_t *)malloc(sizeof(frame_t));
+	    memset(current, 0, sizeof(frame_t));
+      current->frame = cvCreateImage(cvs, IPL_DEPTH_8U, 3);
+      current->id = dwPresentationTime;
   }
+  if (next == NULL)
+  {
+      next = (frame_t *)malloc(sizeof(frame_t));
+	    memset(next, 0, sizeof(frame_t));
+      next->frame = cvCreateImage(cvs, IPL_DEPTH_8U, 3);
+      next->id = dwPresentationTime;
+  }
+  if (next->id != dwPresentationTime)
+  {
+      next->id = dwPresentationTime;
+      next->data_len = 0;
+  }
+  frame_t* f = next; //lazy reimplementation of more simple image handling
   
   //printf("frame time: %u\n", dwPresentationTime);
 
   for (x=0,y=0,i=bHeaderLen; i < size; i += 2) {
-    if (f->data_len >= VFRAME_SIZE)
-    {
-      break;
-    }
     x = f->data_len % VFRAME_WIDTH;
     y = (int)floor((1.0f * f->data_len) / (1.0f * VFRAME_WIDTH));
     setTwoPixels(x,y,0,data[i],data[i])
     setTwoPixels(x+VFRAME_WIDTH,y,data[i+1],0,0)
-    f->data_len++;
+    if (++f->data_len > VFRAME_SIZE)
+    {
+      break;
+    }
   }
 
-  if (bmHeaderInfo & UVC_STREAM_EOF) {
-    //printf("End-of-Frame.  Got %i\n", f->data_len);
-    if (f->data_len != VFRAME_SIZE) {
-      printf("wrong frame size got %i expected %i\n", f->data_len, VFRAME_SIZE);
-      recycling.push(f);
-      frame.erase(f->id);
-      pending.erase(remove(pending.begin(), pending.end(), f->id), pending.end());
-      return ;
-    }
-
-    if (current!=NULL) {
-      recycling.push(current);
-    }
-    current = frame[dwPresentationTime];
-    pending.erase(remove(pending.begin(), pending.end(), dwPresentationTime), pending.end());
-    frame.erase(dwPresentationTime);
-    sort(pending.begin(),pending.end());
-    if (pending.size() > 10) {
-        printf("Oh noez! There are %d pending frames in the queue!\n",(int)pending.size());
-        for(vector<uint32_t>::const_iterator it = pending.begin(); it!=pending.begin()+5;it++)
-        {
-          recycling.push(frame[*it]);
-          frame.erase(*it);
-        }
-        reverse(pending.begin(), pending.end());
-        pending.resize(5);
-        reverse(pending.begin(), pending.end());
-    }
+  if (bmHeaderInfo & UVC_STREAM_EOF && f->data_len == VFRAME_SIZE) {
+    frame_t *tmp = current; //swap buffers
+    current = next;
+    next = tmp;
 
     process_video_frame(ctx);
   }
@@ -161,19 +128,6 @@ int main(int argc, char *argv[])
   {
     cvReleaseImage(&current->frame);
     free(current);
-  }
-  for(std::vector<uint32_t>::const_iterator it = pending.begin(); it != pending.end(); it++)
-  {
-	frame_t *tmp = frame[*it];
-	cvReleaseImage(&tmp->frame);
-	frame.erase((uint32_t)*it);
-	free(tmp);
-  }
-  while(!recycling.empty()) {
-    frame_t *tmp = recycling.top();
-    recycling.pop();
-    cvReleaseImage(&tmp->frame);
-    free(tmp);
   }
 
   return (0);
