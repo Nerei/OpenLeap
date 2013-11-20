@@ -21,7 +21,9 @@ struct stereoframe_s{
     CvMat *cv_image_depth;
     IplImage *cv_image_depth_aux;
     CvStereoBMState *stereo_state; /* Block Matching State */
-
+    IplImage *newLeft;
+    IplImage *newRight;
+    IplImage *newDepth;
 };
 
 stereoframe_t stereo;
@@ -30,12 +32,10 @@ leap::driver *drv;
 
 const CvSize cvs = cvSize(VFRAME_WIDTH, VFRAME_HEIGHT);
 
-void setPixels(IplImage *currentFrame, int x, int y, int data) {
-    int position = (x + VFRAME_WIDTH  * y) * 3;
-    currentFrame->imageData[position] = data;
-    currentFrame->imageData[position + 1] = data;
-    currentFrame->imageData[position + 2] = data;
-}
+#define setPixels(currentFrame, x, y, data) \
+    currentFrame->imageData[(x + VFRAME_WIDTH  * y) * 3] = data; \
+    currentFrame->imageData[(x + VFRAME_WIDTH  * y) * 3 + 1] = data; \
+    currentFrame->imageData[(x + VFRAME_WIDTH  * y) * 3 + 2] = data
 
 void init_stereo_frame(stereoframe_t *frame){
     memset(frame,0,sizeof(stereoframe_t));
@@ -44,6 +44,8 @@ void init_stereo_frame(stereoframe_t *frame){
     frame->cv_image_depth_aux = cvCreateImage (cvs, IPL_DEPTH_8U, 1);
     frame->left = cvCreateImage (cvs, IPL_DEPTH_8U, 3);
     frame->right = cvCreateImage (cvs, IPL_DEPTH_8U, 3);
+    frame->newLeft = cvCreateImage (cvs, IPL_DEPTH_8U, 1);
+    frame->newRight = cvCreateImage (cvs, IPL_DEPTH_8U, 1);
 
     frame->stereo_state->preFilterSize      = 5;
     frame->stereo_state->preFilterCap       = 61;
@@ -58,18 +60,25 @@ void init_stereo_frame(stereoframe_t *frame){
     frame->stereo_state->disp12MaxDiff      = 1;
 }
 
+void deinit_stereo_frame(stereoframe_t *frame) {
+    cvReleaseImage(&frame->right);
+    cvReleaseImage(&frame->left);
+    cvReleaseImage(&frame->newLeft);
+    cvReleaseImage(&frame->newRight);
+    cvReleaseImage(&frame->cv_image_depth_aux);
+    cvReleaseMat(&frame->cv_image_depth);
+}
+
 static void computeStereoBM ( stereoframe_t *data ) {
     int i, j, aux;
     uchar *ptr_dst;
 
-    IplImage * newLeft = cvCreateImage (cvs, IPL_DEPTH_8U, 1);
-    cvCvtColor(data->left, newLeft, CV_RGB2GRAY);
-    IplImage * newRight = cvCreateImage (cvs, IPL_DEPTH_8U, 1);
-    cvCvtColor(data->right, newRight, CV_RGB2GRAY);
+    cvCvtColor(data->left, data->newLeft, CV_RGB2GRAY);
+    cvCvtColor(data->right, data->newRight, CV_RGB2GRAY);
 
     cvFindStereoCorrespondenceBM (
-        newLeft,
-        newRight,
+        data->newLeft,
+        data->newRight,
         data->cv_image_depth,
         data->stereo_state
     );
@@ -94,10 +103,9 @@ void process_video_frame() {
     int key;
 
     // cvShowImage(DEPTH_WINDOW, frame);
-    IplImage * newDepth = cvCreateImage (cvs, IPL_DEPTH_8U, 1);
-    cvConvert(stereo.cv_image_depth, newDepth);
+    cvConvert(stereo.cv_image_depth, stereo.cv_image_depth_aux);
 
-    cvShowImage("Depth Image", newDepth );
+    cvShowImage("Depth Image", stereo.cv_image_depth_aux);
     cvShowImage("Left Image", stereo.left );
     cvShowImage("Right Image", stereo.right );
     // cvShowImage("mainWin", current->frame );
@@ -193,9 +201,10 @@ int main(int argc, char *argv[])
 
     init_stereo_frame(&stereo);
 
-
     drv = new leap::driver(&gotData);
     drv->spin();
+
+    deinit_stereo_frame(&stereo);
 
     return (0);
 }
