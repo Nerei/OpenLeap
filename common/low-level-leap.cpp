@@ -89,7 +89,7 @@ void driver::finishFunc()
 void driver::spin()
 {
   finisher = new boost::thread(boost::bind(&driver::finishFunc, this));
-  unsigned char data[16380];
+  unsigned char data[16384];
   double lasttotal = 0, total = 0;
   int ret, transferred;
   frame_t *current = NULL;
