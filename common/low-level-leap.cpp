@@ -1,40 +1,9 @@
 #include "low-level-leap.h"
-#include <stdarg.h>
-#include <map>
-#include <queue>
-#include <stack>
 
 using namespace std;
+using namespace _leap;
 
-typedef struct _ctx_s _ctx_t;
-struct _ctx_s
-{
-  libusb_context       *libusb_ctx;
-  libusb_device_handle *dev_handle;
-  int quit;
-};
-typedef struct frame_s frame_t;
-struct frame_s
-{
-  camdata_t data;
-  uint32_t id;
-  uint32_t state;
-  uint32_t interleaved_pos;
-  uint32_t left_pos;
-  uint32_t right_pos;
-};
-
-_ctx_t _ctx_data;
-_ctx_t *_ctx;
-
-frame_t *current = NULL;
-
-boost::function<void(camdata_t*)> dataCallback;
-
-unsigned char data[16384];
-
-static void
-fprintf_data(FILE *fp, const char * title, unsigned char *_data, size_t size)
+void fprintf_data(FILE *fp, const char * title, unsigned char *_data, size_t size)
 {
   int i;
  
@@ -46,7 +15,6 @@ fprintf_data(FILE *fp, const char * title, unsigned char *_data, size_t size)
   }
   debug_printf("\n");
 }
-
 std::map<int, unsigned char *> gcc48canDIAF;
 unsigned char *setValAndGetAddr(int l, ...) {
     if (gcc48canDIAF.find(l) == gcc48canDIAF.end())
@@ -59,29 +27,29 @@ unsigned char *setValAndGetAddr(int l, ...) {
     va_end(ap);
     return gcc48canDIAF[l];
 }
-
-static void
-leap_init(_ctx_t *ctx)
+void leap_init(_ctx_t *ctx)
 {
-  int ret; 
-#include "leap_libusb_init.c.inc"
+  unsigned char data[16384];
+  int ret;
+  #include "leap_libusb_init.c.inc"
   for(std::map<int, unsigned char*>::iterator it = gcc48canDIAF.begin(); it != gcc48canDIAF.end(); ++it) {
     free(it->second);
   }
   gcc48canDIAF.clear();
 }
 
-void setDataCallback(boost::function<void(camdata_t*)> dc)
+using namespace leap;
+driver::driver(boost::function<void(camdata_t*)> dc) : dataCallback(dc), current(NULL)
 {
-  dataCallback = dc;
+  init();
 }
 
-void shutdown()
+void driver::shutdown()
 {
   _ctx->quit = 1;
 }
 
-void spin()
+void driver::spin()
 {
   int transferred,ret,i,j;
   while(_ctx->quit == 0) {
@@ -127,7 +95,7 @@ void spin()
   }
 }
 
-void init()
+void driver::init()
 {
   memset(&_ctx_data, 0, sizeof (_ctx_data));
   _ctx = &_ctx_data;

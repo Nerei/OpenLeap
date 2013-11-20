@@ -26,6 +26,8 @@ struct stereoframe_s{
 
 stereoframe_t stereo;
 
+leap::driver *drv;
+
 const CvSize cvs = cvSize(VFRAME_WIDTH, VFRAME_HEIGHT);
 
 void setPixels(IplImage *currentFrame, int x, int y, int data) {
@@ -111,7 +113,7 @@ void process_video_frame() {
         switch(key) {
 
             case 1048689: // q
-                shutdown();
+                drv->shutdown();
                 break;
 
             case 1048695: // w
@@ -191,11 +193,9 @@ int main(int argc, char *argv[])
 
     init_stereo_frame(&stereo);
 
-    init();
-    
-    setDataCallback(&gotData);
-    
-    spin();
+
+    drv = new leap::driver(&gotData);
+    drv->spin();
 
     return (0);
 }

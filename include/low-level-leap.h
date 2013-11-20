@@ -12,9 +12,12 @@
 #include <assert.h>
 #include <limits.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <string>
 #include <map>
 #include <vector>
+#include <queue>
+#include <stack>
 
 #include <boost/thread/thread.hpp>
 #include <boost/thread/mutex.hpp>
@@ -47,8 +50,42 @@ struct camdata_s
   uint8_t interleaved[VFRAME_INTERLEAVED_SIZE];
 };
 
-void setDataCallback(boost::function<void(camdata_t*)>);
-void init();
-void spin();
-void shutdown();
+namespace _leap
+{
+  typedef struct _ctx_s _ctx_t;
+  struct _ctx_s
+  {
+    libusb_context       *libusb_ctx;
+    libusb_device_handle *dev_handle;
+    int quit;
+  };
+  typedef struct frame_s frame_t;
+  struct frame_s
+  {
+    camdata_t data;
+    uint32_t id;
+    uint32_t state;
+    uint32_t interleaved_pos;
+    uint32_t left_pos;
+    uint32_t right_pos;
+  };
+}
+
+namespace leap
+{
+  class driver
+  {
+    public:
+      driver(boost::function<void(camdata_t*)>);
+      void spin();
+      void shutdown();
+    private:
+      void init();
+      _leap::_ctx_t _ctx_data;
+      _leap::_ctx_t *_ctx;
+      _leap::frame_t *current;
+      boost::function<void(camdata_t*)> dataCallback;
+      unsigned char data[16384];    
+  };
+}
 #endif

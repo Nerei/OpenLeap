@@ -24,6 +24,8 @@ using namespace std;
     setPixel(x,2*y,cr,cg,cb) \
     setPixel(x,2*y+1,cr,cg,cb)
 
+leap::driver *drv;
+
 const CvSize cvs = cvSize(VFRAME_WIDTH * 2, 2 * VFRAME_HEIGHT);
 
 IplImage *img;
@@ -35,7 +37,7 @@ void process_video_frame()
   cvShowImage("mainWin", img);
   key = cvWaitKey(1);
   if (key == 'q' || key == 0x1B)
-    shutdown();
+    drv->shutdown();
 }
 
 void gotData(camdata_t *data)
@@ -68,9 +70,9 @@ int main(int argc, char *argv[])
   cvNamedWindow("mainWin", 0);
   cvResizeWindow("mainWin", 2 * VFRAME_WIDTH, 2 * VFRAME_HEIGHT);
   img = cvCreateImage(cvs, IPL_DEPTH_8U, 3);
-  init();
-  setDataCallback(&gotData);
-  spin();
+  drv = new leap::driver(&gotData);
+  drv->spin();
+  free(drv);
   cvReleaseImage(&img);
   return (0);
 }
