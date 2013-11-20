@@ -5,7 +5,7 @@ using namespace _leap;
 
 void fprintf_data(FILE *fp, const char * title, unsigned char *_data, size_t size)
 {
-  int i;
+  unsigned int i;
  
   debug_printf("%s", title);
   for (i = 0; i < size; i++) {
@@ -39,7 +39,7 @@ void leap_init(_ctx_t *ctx)
 }
 
 using namespace leap;
-driver::driver(boost::function<void(camdata_t*)> dc) : dataCallback(dc), current(NULL)
+driver::driver(boost::function<void(camdata_t*)> dc) : dataCallback(dc), current(NULL), _ctx(&_ctx_data)
 {
   init();
 }
@@ -62,7 +62,8 @@ void driver::spin()
     int bHeaderLen = data[0];
     int bmHeaderInfo = data[1];
 
-    uint32_t dwPresentationTime = *( (uint32_t *) &data[2] );
+    uint32_t dwPresentationTime;
+    memcpy(&dwPresentationTime, &(data[2]), sizeof(uint32_t));
 
     if (current == NULL)
     {
@@ -97,8 +98,7 @@ void driver::spin()
 
 void driver::init()
 {
-  memset(&_ctx_data, 0, sizeof (_ctx_data));
-  _ctx = &_ctx_data;
+  memset(_ctx, 0, sizeof (_ctx_data));
   libusb_init( & _ctx->libusb_ctx );
   _ctx->dev_handle = libusb_open_device_with_vid_pid(_ctx->libusb_ctx, LEAP_VID, LEAP_PID);
   if (_ctx->dev_handle == NULL) {

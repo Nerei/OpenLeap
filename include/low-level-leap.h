@@ -75,17 +75,18 @@ namespace leap
 {
   class driver
   {
+    private:
+      boost::function<void(camdata_t*)> dataCallback;
+      _leap::frame_t *current;
+      _leap::_ctx_t _ctx_data;
+      _leap::_ctx_t *_ctx;
+      unsigned char data[16384];   
     public:
       driver(boost::function<void(camdata_t*)>);
       void spin();
       void shutdown();
     private:
-      void init();
-      _leap::_ctx_t _ctx_data;
-      _leap::_ctx_t *_ctx;
-      _leap::frame_t *current;
-      boost::function<void(camdata_t*)> dataCallback;
-      unsigned char data[16384];    
+      void init(); 
   };
 }
 #endif
