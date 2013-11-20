@@ -77,16 +77,21 @@ namespace leap
   {
     private:
       boost::function<void(camdata_t*)> dataCallback;
-      _leap::frame_t *current;
       _leap::_ctx_t _ctx_data;
       _leap::_ctx_t *_ctx;
-      unsigned char data[16384];   
+
+      boost::mutex completelock;
+      std::queue<_leap::frame_t *> complete;
+      boost::mutex readylock;
+      std::queue<_leap::frame_t *> ready;
+      boost::thread *finisher;
     public:
       driver(boost::function<void(camdata_t*)>);
       void spin();
       void shutdown();
     private:
-      void init(); 
+      void init();
+      void finishFunc();
   };
 }
 #endif

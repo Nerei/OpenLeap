@@ -39,7 +39,10 @@ void leap_init(_ctx_t *ctx)
 }
 
 using namespace leap;
-driver::driver(boost::function<void(camdata_t*)> dc) : dataCallback(dc), current(NULL), _ctx(&_ctx_data)
+driver::driver(boost::function<void(camdata_t*)> dc) :
+  dataCallback(dc),
+  _ctx(&_ctx_data),
+  finisher(NULL)
 {
   init();
 }
@@ -47,13 +50,71 @@ driver::driver(boost::function<void(camdata_t*)> dc) : dataCallback(dc), current
 void driver::shutdown()
 {
   _ctx->quit = 1;
+  if (finisher != NULL)
+  {
+    finisher->join();
+    free(finisher);
+    finisher = NULL;
+  }
+  {
+    boost::mutex::scoped_lock l(completelock);
+    while (!complete.empty())
+    {
+      free(complete.front());
+      complete.pop();
+    }
+  }
+  {
+    boost::mutex::scoped_lock l(readylock);
+    while (!ready.empty())
+    {
+      free(ready.front());
+      ready.pop();
+    }
+  }
+  libusb_exit(_ctx->libusb_ctx);
+}
+
+void driver::finishFunc()
+{
+  while (_ctx->quit ==  0) {
+    frame_t *current = NULL;
+    {
+      boost::mutex::scoped_lock l(completelock);
+      while (!complete.empty())
+      {
+        current = complete.front();
+        complete.pop();
+      }
+    }
+    if (current != NULL)
+    {
+      for(uint32_t i=0;i<current->interleaved_pos;i+=2)
+      {
+        if (current->left_pos < VFRAME_SIZE) current->data.left[current->left_pos++] = current->data.interleaved[i];
+        if (current->right_pos < VFRAME_SIZE) current->data.right[current->right_pos++] = current->data.interleaved[i+1];
+      }
+      if (dataCallback != NULL)
+        dataCallback(&current->data);
+      memset(current, 0, sizeof(frame_t));
+      {
+        boost::mutex::scoped_lock l(readylock);
+        ready.push(current);
+      }
+    }
+    sleep(0.01);
+  }
 }
 
 void driver::spin()
 {
-  int transferred,ret,i,j;
+  finisher = new boost::thread(boost::bind(&driver::finishFunc, this));
+  unsigned char data[16380];
+  double lasttotal = 0, total = 0;
+  int ret, transferred;
+  frame_t *current = NULL;
   while(_ctx->quit == 0) {
-    ret = libusb_bulk_transfer(_ctx->dev_handle, 0x83, data, sizeof(data), &transferred, 100);
+    ret = libusb_bulk_transfer(_ctx->dev_handle, 0x83, data, sizeof(data), &transferred, 0);
     if (ret != 0) {
       printf("libusb_bulk_transfer(): %i: %s\n", ret, libusb_error_name(ret));
       continue;
@@ -67,29 +128,57 @@ void driver::spin()
 
     if (current == NULL)
     {
-       current = (frame_t *)malloc(sizeof(frame_t));
-       memset(current, 0, sizeof(frame_t));
+      {
+        boost::mutex::scoped_lock l(readylock);
+        if (!ready.empty())
+        {
+          current = ready.front();
+          ready.pop();
+        }
+      }
+      if (current == NULL)
+      {
+        current = (frame_t *)malloc(sizeof(frame_t));
+        current->id = 0;
+      }
     }
-    if (current->id != dwPresentationTime) {
-        current->interleaved_pos = 0;
-        current->left_pos = 0;
-        current->right_pos = 0;
-        current->state = 0;
-        current->id = dwPresentationTime;
+    if (current->id == 0 || dwPresentationTime > current->id) {
+      memset(current, 0, sizeof(frame_t));
+      current->id = dwPresentationTime;
+      total = 0;
     }
-    for (j=0,i=bHeaderLen; i < transferred && (current->left_pos < VFRAME_SIZE || current->right_pos < VFRAME_SIZE || current->interleaved_pos < VFRAME_INTERLEAVED_SIZE); i++,j=1-j) {
-      if (j == 0 && current->left_pos < VFRAME_SIZE) current->data.left[current->left_pos++] = data[i];
-      else if (j == 1 && current->right_pos < VFRAME_SIZE) current->data.right[current->right_pos++] = data[i];
-      if (current->interleaved_pos < VFRAME_INTERLEAVED_SIZE) current->data.interleaved[current->interleaved_pos++] = data[i];      
+    else if (dwPresentationTime < current->id) {
+      continue;
     }
+    int i;
+    for(i=bHeaderLen; i<transferred; i++) {
+      if (current->interleaved_pos >= VFRAME_INTERLEAVED_SIZE)
+      {
+        break;
+      }
+      current->data.interleaved[current->interleaved_pos++] = data[i];
+      total += data[i];
+    }
+    if (transferred - i != 0)
+    {
+      //printf("FOUND JUNK AT END OF READ!\n");
+      current->id = 0;
+      continue;
+    }
+    current->state++;
 
     if (bmHeaderInfo & UVC_STREAM_EOF) {
-      if (current->interleaved_pos == VFRAME_INTERLEAVED_SIZE && dataCallback != NULL)
-          dataCallback(&current->data);
-      current->id = 0;
+      if (current->interleaved_pos == VFRAME_INTERLEAVED_SIZE && (lasttotal == 0 || abs(lasttotal-total)<1000000)) //empirically determined + hardcoded... this keeps the image from flashing
+      {
+        boost::mutex::scoped_lock l(completelock);
+        complete.push(current);
+        current = NULL;
+      }
+      lasttotal=total;
+      if (current != NULL)
+        current->id = 0;
     }
   }
-  libusb_exit(_ctx->libusb_ctx);
   if (current)
   {
     free(current);
