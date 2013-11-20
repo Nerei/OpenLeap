@@ -26,10 +26,10 @@
 
 #include <libusb.h>
 
-#ifdef NDEBUG
-#define debug_printf(...)
-#else
+#ifdef DEBUG
 #define debug_printf(...) fprintf(stderr, __VA_ARGS__)
+#else
+#define debug_printf(...)
 #endif
 
 #define LEAP_VID 0xf182
