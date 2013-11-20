@@ -50,34 +50,13 @@ driver::driver(boost::function<void(camdata_t*)> dc) :
 void driver::shutdown()
 {
   _ctx->quit = 1;
-  if (finisher != NULL)
-  {
-    finisher->join();
-    free(finisher);
-    finisher = NULL;
-  }
-  {
-    boost::mutex::scoped_lock l(completelock);
-    while (!complete.empty())
-    {
-      free(complete.front());
-      complete.pop();
-    }
-  }
-  {
-    boost::mutex::scoped_lock l(readylock);
-    while (!ready.empty())
-    {
-      free(ready.front());
-      ready.pop();
-    }
-  }
-  libusb_exit(_ctx->libusb_ctx);
+  while (_ctx->quit != 3)
+    sleep(0.1);
 }
 
 void driver::finishFunc()
 {
-  while (_ctx->quit ==  0) {
+  while (_ctx->quit != 2) {
     frame_t *current = NULL;
     {
       boost::mutex::scoped_lock l(completelock);
@@ -104,6 +83,7 @@ void driver::finishFunc()
     }
     sleep(0.01);
   }
+  _ctx->quit = 3;
 }
 
 void driver::spin()
@@ -179,9 +159,33 @@ void driver::spin()
         current->id = 0;
     }
   }
+  libusb_exit(_ctx->libusb_ctx);
   if (current)
   {
     free(current);
+  }
+  {
+    boost::mutex::scoped_lock l(completelock);
+    while (!complete.empty())
+    {
+      free(complete.front());
+      complete.pop();
+    }
+  }
+  {
+    boost::mutex::scoped_lock l(readylock);
+    while (!ready.empty())
+    {
+      free(ready.front());
+      ready.pop();
+    }
+  }
+  _ctx->quit = 2;
+  if (finisher != NULL)
+  {
+    finisher->join();
+    free(finisher);
+    finisher = NULL;
   }
 }
 
