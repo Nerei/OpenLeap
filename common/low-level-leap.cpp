@@ -127,9 +127,6 @@ void driver::spin()
       current->id = dwPresentationTime;
       total = 0;
     }
-    else if (dwPresentationTime < current->id) {
-      continue;
-    }
     int i;
     for(i=bHeaderLen; i<transferred; i++) {
       if (current->interleaved_pos >= VFRAME_INTERLEAVED_SIZE)
