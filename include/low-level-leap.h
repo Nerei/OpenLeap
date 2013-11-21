@@ -85,10 +85,12 @@ namespace leap
       boost::mutex readylock;
       std::queue<_leap::frame_t *> ready;
       boost::thread *finisher;
+      bool avoidFlashes;
     public:
       driver(boost::function<void(camdata_t*)>);
       void spin();
       void shutdown();
+      void agressivelyAvoidFlashes(bool);
     private:
       void init();
       void finishFunc();

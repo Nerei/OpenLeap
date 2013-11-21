@@ -42,9 +42,15 @@ using namespace leap;
 driver::driver(boost::function<void(camdata_t*)> dc) :
   dataCallback(dc),
   _ctx(&_ctx_data),
-  finisher(NULL)
+  finisher(NULL),
+  avoidFlashes(false)
 {
   init();
+}
+
+void driver::agressivelyAvoidFlashes(bool state=true)
+{
+  avoidFlashes = state;
 }
 
 void driver::shutdown()
@@ -145,7 +151,7 @@ void driver::spin()
     current->state++;
 
     if (bmHeaderInfo & UVC_STREAM_EOF) {
-      if (current->interleaved_pos == VFRAME_INTERLEAVED_SIZE && (lasttotal == 0 || abs(lasttotal-total)<1000000)) //empirically determined + hardcoded... this keeps the image from flashing
+      if (current->interleaved_pos == VFRAME_INTERLEAVED_SIZE && (!avoidFlashes || lasttotal == 0 || abs(lasttotal-total)<1000000)) //empirically determined + hardcoded... this keeps the image from flashing
       {
         boost::mutex::scoped_lock l(completelock);
         complete.push(current);
