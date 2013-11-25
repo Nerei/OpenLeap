@@ -75,7 +75,7 @@ common/leap_libusb_init.c.inc: common/leap_init.pcap
 	common/make_leap_usbinit.sh common/leap_init.pcap common/leap_libusb_init.c.inc $(DEVICE) $(RAWDEVICE)
 
 libopenleap.so: common/leap_libusb_init.c.inc common/low-level-leap.cpp 
-	$(CXX) -fPIC -MD -MP -MT "./libopenleap.d ./libopenleap.o" -c -msse3 $(CXXFLAGS) -o libopenleap.o common/low-level-leap.cpp
+	$(CXX) -fPIC -MD -MP -MT "./libopenleap.d ./libopenleap.o" -c $(CXXFLAGS) -o libopenleap.o common/low-level-leap.cpp
 	$(CXX) -shared -Wl,-soname,libopenleap.so -o libopenleap.so libopenleap.o $(LDFLAGS)
 
 $(TARGETS): $(OBJS)
